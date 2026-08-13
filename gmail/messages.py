@@ -30,10 +30,7 @@ def get_today_range():
 
 def search_messages(service, sender):
 
-    # TEMPORAL (pruebas): usando el rango de HOY en vez de ayer.
-    # Cuando termines de probar, cambia get_today_range() por
-    # get_yesterday_range() para volver al comportamiento de produccion.
-    start, end = get_today_range()
+    start, end = get_yesterday_range()
 
     query = (
         f"from:{sender} "
