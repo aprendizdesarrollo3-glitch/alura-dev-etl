@@ -1,0 +1,61 @@
+name: Deploy Lambda
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: gmail-etl-lambda
+  LAMBDA_FUNCTION: gmail-etl-lambda
+  LAMBDA_ROLE_ARN: arn:aws:iam::814383264230:role/gmail-etl-lambda-role
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciales de AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login a ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Construir y subir la imagen
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Crear o actualizar la funcion Lambda
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+          if aws lambda get-function --function-name "$LAMBDA_FUNCTION" --region "$AWS_REGION" >/dev/null 2>&1; then
+            echo "La funcion ya existe, actualizando codigo..."
+            aws lambda update-function-code \
+              --function-name "$LAMBDA_FUNCTION" \
+              --image-uri "$IMAGE_URI" \
+              --region "$AWS_REGION"
+          else
+            echo "La funcion no existe, creandola..."
+            aws lambda create-function \
+              --function-name "$LAMBDA_FUNCTION" \
+              --package-type Image \
+              --code ImageUri="$IMAGE_URI" \
+              --role "$LAMBDA_ROLE_ARN" \
+              --timeout 60 \
+              --memory-size 512 \
+              --region "$AWS_REGION"
+          fi
